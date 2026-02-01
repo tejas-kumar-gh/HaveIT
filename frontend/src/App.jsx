@@ -6,7 +6,7 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import HowItWorks from './pages/HowItWorks';
 import About from './pages/About';
-import Contact from './pages/contact';
+import Contact from './pages/Contact';
 import Dashboard from './pages/Dashboard';
 import PostTrip from './pages/PostTrip';
 import Trips from './pages/Trips';
