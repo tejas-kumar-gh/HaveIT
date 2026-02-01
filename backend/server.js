@@ -12,10 +12,15 @@ dotenv.config();
 const app = express();
 
 // Middleware
+
 app.use(cors({
-  origin: "https://have-it-sooty.vercel.app/", // frontend URL later
+  origin: [
+    "http://localhost:5173",
+    "https://have-it-sooty.vercel.app"
+  ],
   credentials: true
 }));
+
 app.use(express.json());
 app.use(cookieParser());
 
