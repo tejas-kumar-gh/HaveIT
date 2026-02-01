@@ -1,122 +1,138 @@
 const Request = require("../models/Request");
 const Trip = require("../models/Trip");
-const User = require("../models/User");
 
-// Post a new request (Item Demander)
+// Create delivery request
 exports.createRequest = async (req, res) => {
   try {
     const { tripId, itemName, itemType, quantity, phone, email, price } = req.body;
-
-    if (!itemName || !itemType || !quantity || !phone || !email || !price) {
+    
+    if (!tripId || !itemName || !itemType || !quantity || !phone || !email || !price) {
       return res.status(400).json({ message: "All fields are required" });
     }
-
-    // Optional: check if itemType is allowed in the trip
-    if (tripId) {
-      const trip = await Trip.findById(tripId);
-      if (trip && !trip.allowedItemTypes.includes(itemType)) {
-        return res.status(400).json({ message: "Item type not allowed in this trip" });
-      }
+    
+    // Check if trip exists
+    const trip = await Trip.findById(tripId);
+    if (!trip) {
+      return res.status(404).json({ message: "Trip not found" });
     }
-
-    const request = await Request.create({
+    
+    // Check if user already requested this trip
+    const existingRequest = await Request.findOne({
+      tripId: tripId,
       demanderId: req.user.id,
-      tripId,
-      itemName,
-      itemType,
-      quantity,
-      phone,
-      email,
-      price
+      status: { $in: ['pending', 'accepted'] }
     });
-
-    res.status(201).json({ message: "Request posted", request });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-// Get all requests (for Carriers)
-exports.getRequests = async (req, res) => {
-  try {
-    const requests = await Request.find({ status: "pending" })
-      .populate("demanderId", "-password")
-      .populate("tripId");
-
-    res.json(requests);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-// Accept or Reject a request (Carrier)
-exports.respondRequest = async (req, res) => {
-  try {
-    const { requestId, action } = req.body; // action = 'accepted' or 'rejected'
-
-    if (!requestId || !["accepted", "rejected"].includes(action)) {
-      return res.status(400).json({ message: "Invalid request or action" });
+    
+    if (existingRequest) {
+      return res.status(400).json({ message: "You have already requested this trip" });
     }
-
-    const request = await Request.findById(requestId);
-    if (!request) return res.status(404).json({ message: "Request not found" });
-
-    request.status = action;
-    if (action === "accepted") request.carrierId = req.user.id;
-
-    await request.save();
-
-    res.json({ message: `Request ${action}`, request });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-// Item Demander sees all their requests
-exports.myRequests = async (req, res) => {
-  try {
-    const requests = await Request.find({ demanderId: req.user.id })
-      .populate("carrierId", "-password")
-      .populate("tripId");
-
-    res.json(requests);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-exports.respondRequest = async (req, res) => {
-  try {
-    const { requestId, action } = req.body;
-
-    if (!requestId || !["accepted", "rejected"].includes(action)) {
-      return res.status(400).json({ message: "Invalid request or action" });
-    }
-
-    const request = await Request.findById(requestId);
-    if (!request) return res.status(404).json({ message: "Request not found" });
-
-    request.status = action;
-    if (action === "accepted") {
-      request.carrierId = req.user.id;
-
-      // Update Trip delivered count if trip exists
-      if (request.tripId) {
-        await Trip.findByIdAndUpdate(request.tripId, {
-          $inc: { totalDeliveredItems: request.quantity }
-        });
-      }
-
-      // Update Carrier totalDeliveries
-      await User.findByIdAndUpdate(req.user.id, {
-        $inc: { totalDeliveries: request.quantity }
+    
+    // Check if trip has capacity
+    const availableCapacity = trip.capacity - (trip.totalDeliveredItems || 0);
+    if (availableCapacity < quantity) {
+      return res.status(400).json({ 
+        message: `Trip only has ${availableCapacity} spots available` 
       });
     }
-
-    await request.save();
-
-    res.json({ message: `Request ${action}`, request });
+    
+    // Create request
+    const request = await Request.create({
+      tripId,
+      demanderId: req.user.id,
+      itemName,
+      itemType,
+      quantity: parseInt(quantity),
+      phone,
+      email,
+      price: parseFloat(price)
+    });
+    
+    res.status(201).json({ message: "Delivery request sent successfully", request });
   } catch (err) {
+    console.error('Error creating request:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// Check if user has requested a trip
+exports.checkRequest = async (req, res) => {
+  try {
+    const request = await Request.findOne({
+      tripId: req.params.tripId,
+      demanderId: req.user.id,
+      status: { $in: ['pending', 'accepted'] }
+    });
+    
+    res.json({ requested: !!request });
+  } catch (err) {
+    console.error('Error checking request:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// Get requests for a trip (for carrier to see responses)
+exports.getTripRequests = async (req, res) => {
+  try {
+    const tripId = req.params.tripId;
+    
+    // Check if trip belongs to user
+    const trip = await Trip.findById(tripId);
+    if (!trip) {
+      return res.status(404).json({ message: "Trip not found" });
+    }
+    
+    if (trip.carrierId.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Not authorized to view these requests" });
+    }
+    
+    const requests = await Request.find({ tripId: tripId })
+      .populate("demanderId", "name email phone rating")
+      .sort({ createdAt: -1 });
+    
+    res.json(requests);
+  } catch (err) {
+    console.error('Error fetching trip requests:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// Update request status (accept/reject)
+exports.updateRequestStatus = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { status } = req.body;
+    
+    if (!['accepted', 'rejected'].includes(status)) {
+      return res.status(400).json({ message: "Invalid status" });
+    }
+    
+    const request = await Request.findById(requestId);
+    if (!request) {
+      return res.status(404).json({ message: "Request not found" });
+    }
+    
+    // Check if user owns the trip
+    const trip = await Trip.findById(request.tripId);
+    if (!trip || trip.carrierId.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+    
+    // Update request status
+    request.status = status;
+    if (status === 'accepted') {
+      request.carrierId = req.user.id;
+    }
+    await request.save();
+    
+    // If accepted, update trip capacity
+    if (status === 'accepted') {
+      trip.totalDeliveredItems = (trip.totalDeliveredItems || 0) + request.quantity;
+      await trip.save();
+    }
+    
+    res.json({ message: `Request ${status} successfully`, request });
+  } catch (err) {
+    console.error('Error updating request:', err);
     res.status(500).json({ message: err.message });
   }
 };

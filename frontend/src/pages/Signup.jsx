@@ -131,7 +131,7 @@ const Signup = () => {
         });
 
         // Redirect to dashboard immediately (no delay)
-        window.location.href = '/dashboard';
+        navigate('/dashboard');
       }
     } catch (error) {
       console.error('❌ Signup error:', error);

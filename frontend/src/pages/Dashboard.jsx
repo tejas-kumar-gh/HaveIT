@@ -1,17 +1,30 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import axios from 'axios';
 import Navbar from '../components/Navbar';
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('overview');
-  
+  const [activeRole, setActiveRole] = useState('demander');
+  const [searchQuery, setSearchQuery] = useState({
+    from: '',
+    to: '',
+    date: ''
+  });
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState('');
+  const [requestingTrip, setRequestingTrip] = useState(null);
+  const [requestedTrips, setRequestedTrips] = useState(new Set());
+
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+
   useEffect(() => {
     const userData = localStorage.getItem('user');
     const isAuthenticated = localStorage.getItem('isAuthenticated');
-    
+
     if (!userData || !isAuthenticated) {
       navigate('/login');
     } else {
@@ -20,12 +33,195 @@ const Dashboard = () => {
     }
   }, [navigate]);
 
+  const handleSearch = async (e) => {
+    e.preventDefault();
+
+    if (!searchQuery.from.trim() || !searchQuery.to.trim()) {
+      setSearchError('Please enter both From and To cities');
+      return;
+    }
+
+    setSearchLoading(true);
+    setSearchError('');
+    setSearchResults([]);
+
+    try {
+      const response = await axios.get(`${API_URL}/trips`, {
+        params: {
+          fromCity: searchQuery.from,
+          toCity: searchQuery.to,
+          date: searchQuery.date || undefined
+        },
+        withCredentials: true
+      });
+
+      // Filter by available capacity on frontend
+      const tripsWithCapacity = response.data.filter(trip => {
+        const availableCapacity = calculateAvailableCapacity(trip);
+        return availableCapacity > 0;
+      });
+
+      setSearchResults(tripsWithCapacity);
+
+      if (tripsWithCapacity.length === 0) {
+        setSearchError(
+          `No trips found from "${searchQuery.from}" to "${searchQuery.to}"` +
+          `${searchQuery.date ? ` on ${searchQuery.date}` : ''}`
+        );
+      }
+    } catch (error) {
+      console.error('Search error:', error);
+      if (error.response?.data?.message) {
+        setSearchError(error.response.data.message);
+      } else {
+        setSearchError('Failed to search trips. Please try again.');
+      }
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+  const handleRequestDelivery = async (tripId) => {
+    console.log('🟡 Starting request delivery for trip:', tripId);
+
+    // Debug localStorage
+    console.log('🔍 Checking localStorage:');
+    console.log('User:', localStorage.getItem('user'));
+    console.log('Token:', localStorage.getItem('token'));
+    console.log('isAuthenticated:', localStorage.getItem('isAuthenticated'));
+
+    if (!user || user.role !== 'demander') {
+      alert('Only item demanders can request delivery');
+      return;
+    }
+
+    setRequestingTrip(tripId);
+
+    try {
+      // Show a simple form for item details
+      const itemName = prompt('Enter item name:');
+      if (!itemName) {
+        setRequestingTrip(null);
+        return;
+      }
+
+      const itemType = prompt('Enter item type (e.g., documents, electronics, clothing):');
+      if (!itemType) {
+        setRequestingTrip(null);
+        return;
+      }
+
+      const quantity = prompt('Enter quantity (number of items):', '1');
+      if (!quantity || parseInt(quantity) < 1) {
+        alert('Quantity must be at least 1');
+        setRequestingTrip(null);
+        return;
+      }
+
+      const price = prompt('Enter price (₹):');
+      if (!price || parseFloat(price) <= 0) {
+        alert('Please enter a valid price');
+        setRequestingTrip(null);
+        return;
+      }
+
+      // Get user phone and email from stored user data
+      const userData = JSON.parse(localStorage.getItem('user'));
+      const token = localStorage.getItem('token'); // Get token from localStorage
+
+      if (!token) {
+        alert('No authentication token found. Please login again.');
+        setRequestingTrip(null);
+        return;
+      }
+
+      // Prepare request data
+      const requestData = {
+        tripId,
+        itemName,
+        itemType,
+        quantity: parseInt(quantity),
+        phone: userData.phone || '',
+        email: userData.email || '',
+        price: parseFloat(price)
+      };
+
+      console.log('📦 Sending request data:', requestData);
+      console.log('🔗 API URL:', `${API_URL}/requests`);
+      console.log('🔑 Token present:', !!token);
+
+      // Send request WITH Authorization header
+      const response = await axios.post(`${API_URL}/requests`, requestData, {
+        withCredentials: true,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` // Send token in header
+        }
+      });
+
+      console.log('✅ Request successful:', response.data);
+
+      // Mark this trip as requested
+      setRequestedTrips(prev => new Set([...prev, tripId]));
+
+      alert('Delivery request sent successfully!');
+
+    } catch (error) {
+      console.error('❌ Error requesting delivery:', error);
+
+      // Detailed error logging
+      if (error.response) {
+        console.error('Error response status:', error.response.status);
+        console.error('Error response data:', error.response.data);
+        console.error('Error response headers:', error.response.headers);
+
+        if (error.response.status === 401) {
+          alert('Authentication failed. Please login again.');
+          localStorage.clear();
+          navigate('/login');
+        } else {
+          alert(`Error: ${error.response.status} - ${error.response.data?.message || 'Request failed'}`);
+        }
+      } else if (error.request) {
+        console.error('No response received:', error.request);
+        alert('No response from server. Check your network connection and make sure the backend is running.');
+      } else {
+        console.error('Request setup error:', error.message);
+        alert(`Error: ${error.message}`);
+      }
+    } finally {
+      setRequestingTrip(null);
+    }
+  };
+
+  const formatDate = (dateString) => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-IN', {
+        weekday: 'short',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch (error) {
+      return dateString;
+    }
+  };
+
+  const formatTime = (timeString) => {
+    if (!timeString) return '';
+    return timeString;
+  };
+
+  const calculateAvailableCapacity = (trip) => {
+    return trip.capacity - (trip.totalDeliveredItems || 0);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading your dashboard...</p>
+          <p className="text-gray-600">Loading...</p>
         </div>
       </div>
     );
@@ -34,346 +230,372 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      
-      {/* Dashboard Header */}
-      <div className="bg-gradient-to-r from-primary to-accent">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+      {/* Header */}
+      <div className="bg-white border-b">
+        <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between">
             <div>
-              <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
-                Welcome back, {user?.name}!
-              </h1>
-              <p className="text-white/80">
-                Manage your deliveries and trips from your dashboard
-              </p>
+              <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
+              <p className="text-gray-600 mt-1">Welcome back, {user?.name}</p>
             </div>
+
+            {/* Role Switcher */}
             <div className="mt-4 md:mt-0">
-              <div className="inline-flex items-center bg-white/20 backdrop-blur-sm rounded-full px-4 py-2">
-                <div className="w-8 h-8 bg-white/30 rounded-full flex items-center justify-center mr-2">
-                  <span className="text-white font-bold">⭐</span>
-                </div>
-                <div>
-                  <p className="text-white text-sm">Your Rating</p>
-                  <p className="text-white font-bold text-lg">{user?.rating || 0}.0</p>
-                </div>
+              <div className="inline-flex bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setActiveRole('demander')}
+                  className={`px-4 py-2 rounded-md transition-colors ${activeRole === 'demander'
+                      ? 'bg-primary text-white'
+                      : 'text-gray-700 hover:bg-gray-200'
+                    }`}
+                >
+                  📦 Item Demander
+                </button>
+                <button
+                  onClick={() => setActiveRole('carrier')}
+                  className={`px-4 py-2 rounded-md transition-colors ${activeRole === 'carrier'
+                      ? 'bg-secondary text-white'
+                      : 'text-gray-700 hover:bg-gray-200'
+                    }`}
+                >
+                  🚗 Trip Carrier
+                </button>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Main Dashboard Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-blue-500">
-            <div className="flex items-center">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
-                <span className="text-2xl text-blue-600">📊</span>
-              </div>
-              <div>
-                <p className="text-gray-500 text-sm">Total Deliveries</p>
-                <p className="text-2xl font-bold text-gray-800">{user?.totalDeliveries || 0}</p>
-              </div>
-            </div>
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        {/* Stats Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <div className="bg-white p-4 rounded-lg shadow">
+            <p className="text-gray-500 text-sm">Total Deliveries</p>
+            <p className="text-2xl font-bold mt-1">{user?.totalDeliveries || 0}</p>
           </div>
-          
-          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-green-500">
-            <div className="flex items-center">
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mr-4">
-                <span className="text-2xl text-green-600">✅</span>
-              </div>
-              <div>
-                <p className="text-gray-500 text-sm">Completed</p>
-                <p className="text-2xl font-bold text-gray-800">0</p>
-              </div>
-            </div>
+          <div className="bg-white p-4 rounded-lg shadow">
+            <p className="text-gray-500 text-sm">Rating</p>
+            <p className="text-2xl font-bold mt-1">{user?.rating || 0} ⭐</p>
           </div>
-          
-          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-yellow-500">
-            <div className="flex items-center">
-              <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center mr-4">
-                <span className="text-2xl text-yellow-600">⏳</span>
-              </div>
-              <div>
-                <p className="text-gray-500 text-sm">In Progress</p>
-                <p className="text-2xl font-bold text-gray-800">0</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-purple-500">
-            <div className="flex items-center">
-              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mr-4">
-                <span className="text-2xl text-purple-600">💰</span>
-              </div>
-              <div>
-                <p className="text-gray-500 text-sm">Earnings</p>
-                <p className="text-2xl font-bold text-gray-800">₹0</p>
-              </div>
-            </div>
+          <div className="bg-white p-4 rounded-lg shadow">
+            <p className="text-gray-500 text-sm">Account Type</p>
+            <p className="text-2xl font-bold mt-1 capitalize">{user?.role || 'User'}</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column - Quick Actions & Profile */}
-          <div className="lg:col-span-2 space-y-8">
-            {/* Quick Actions */}
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-gray-800">Quick Actions</h2>
-                <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                  <span className="text-primary text-xl">⚡</span>
+        {/* Role-Based Dashboard */}
+        {activeRole === 'demander' ? (
+          // ITEM DEMANDER SECTION
+          <div className="space-y-6">
+            <h2 className="text-xl font-bold text-gray-800">📦 Item Demander Dashboard</h2>
+
+            {/* Search for Trips */}
+            <div className="bg-white rounded-lg shadow p-5">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">Search for Available Trips</h3>
+
+              <form onSubmit={handleSearch}>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div>
+                    <label className="block text-gray-700 text-sm mb-2">From City</label>
+                    <input
+                      type="text"
+                      value={searchQuery.from}
+                      onChange={(e) => setSearchQuery({ ...searchQuery, from: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                      placeholder="Enter departure city"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-700 text-sm mb-2">To City</label>
+                    <input
+                      type="text"
+                      value={searchQuery.to}
+                      onChange={(e) => setSearchQuery({ ...searchQuery, to: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                      placeholder="Enter destination city"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-700 text-sm mb-2">Travel Date (Optional)</label>
+                    <input
+                      type="date"
+                      value={searchQuery.date}
+                      onChange={(e) => setSearchQuery({ ...searchQuery, date: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                      min={new Date().toISOString().split('T')[0]}
+                    />
+                  </div>
                 </div>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Link 
-                  to="/post-trip" 
-                  className="group bg-gradient-to-r from-blue-50 to-blue-100 hover:from-blue-100 hover:to-blue-200 border border-blue-200 rounded-xl p-5 transition-all duration-200 hover:shadow-md"
-                >
-                  <div className="flex items-center">
-                    <div className="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center mr-4 group-hover:bg-blue-600 transition-colors">
-                      <span className="text-white text-xl">🚗</span>
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-gray-800">Post a Trip</h3>
-                      <p className="text-sm text-gray-600">Share your travel plans</p>
-                    </div>
-                  </div>
-                </Link>
-                
-                <Link 
-                  to="/post-request" 
-                  className="group bg-gradient-to-r from-green-50 to-green-100 hover:from-green-100 hover:to-green-200 border border-green-200 rounded-xl p-5 transition-all duration-200 hover:shadow-md"
-                >
-                  <div className="flex items-center">
-                    <div className="w-12 h-12 bg-green-500 rounded-lg flex items-center justify-center mr-4 group-hover:bg-green-600 transition-colors">
-                      <span className="text-white text-xl">📦</span>
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-gray-800">Request Delivery</h3>
-                      <p className="text-sm text-gray-600">Need something delivered</p>
-                    </div>
-                  </div>
-                </Link>
-                
-                <Link 
-                  to="/trips" 
-                  className="group bg-gradient-to-r from-purple-50 to-purple-100 hover:from-purple-100 hover:to-purple-200 border border-purple-200 rounded-xl p-5 transition-all duration-200 hover:shadow-md"
-                >
-                  <div className="flex items-center">
-                    <div className="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center mr-4 group-hover:bg-purple-600 transition-colors">
-                      <span className="text-white text-xl">🔍</span>
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-gray-800">Browse Trips</h3>
-                      <p className="text-sm text-gray-600">Find available travelers</p>
-                    </div>
-                  </div>
-                </Link>
-                
-                <Link 
-                  to="/requests" 
-                  className="group bg-gradient-to-r from-orange-50 to-orange-100 hover:from-orange-100 hover:to-orange-200 border border-orange-200 rounded-xl p-5 transition-all duration-200 hover:shadow-md"
-                >
-                  <div className="flex items-center">
-                    <div className="w-12 h-12 bg-orange-500 rounded-lg flex items-center justify-center mr-4 group-hover:bg-orange-600 transition-colors">
-                      <span className="text-white text-xl">📋</span>
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-gray-800">View Requests</h3>
-                      <p className="text-sm text-gray-600">See delivery requests</p>
-                    </div>
-                  </div>
-                </Link>
-              </div>
+
+                <div className="flex items-center space-x-4">
+                  <button
+                    type="submit"
+                    disabled={searchLoading}
+                    className="bg-primary text-white px-6 py-2 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+                  >
+                    {searchLoading ? (
+                      <div className="flex items-center">
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                        Searching...
+                      </div>
+                    ) : (
+                      '🔍 Search Trips'
+                    )}
+                  </button>
+
+                  {(searchQuery.from || searchQuery.to || searchQuery.date) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery({ from: '', to: '', date: '' });
+                        setSearchResults([]);
+                        setSearchError('');
+                        setRequestedTrips(new Set());
+                      }}
+                      className="text-gray-600 hover:text-gray-800"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </form>
+
+              {/* Error Message */}
+              {searchError && (
+                <div className="mt-4 p-3 bg-red-50 text-red-700 rounded-lg border border-red-200">
+                  {searchError}
+                </div>
+              )}
             </div>
 
-            {/* Recent Activity */}
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <h2 className="text-xl font-bold text-gray-800 mb-6">Recent Activity</h2>
-              <div className="space-y-4">
-                <div className="flex items-center p-3 bg-gray-50 rounded-lg">
-                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-3">
-                    <span className="text-blue-600">📦</span>
+            {/* Search Results */}
+            {searchResults.length > 0 && (
+              <div className="bg-white rounded-lg shadow p-5">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold text-gray-800">
+                    Search Results ({searchResults.length} trips found)
+                  </h3>
+                  <div className="text-sm text-gray-500">
+                    From: {searchQuery.from} → To: {searchQuery.to}
+                    {searchQuery.date && ` | Date: ${searchQuery.date}`}
                   </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-800">No recent activity</p>
-                    <p className="text-sm text-gray-500">Your activity will appear here</p>
-                  </div>
-                  <span className="text-sm text-gray-500">Just now</span>
                 </div>
-                
+
+                <div className="space-y-4">
+                  {searchResults.map(trip => {
+                    const availableCapacity = calculateAvailableCapacity(trip);
+                    const isRequested = requestedTrips.has(trip._id);
+                    const isRequesting = requestingTrip === trip._id;
+
+                    return (
+                      <div key={trip._id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between">
+                          <div className="mb-3 md:mb-0 md:mr-4">
+                            <h4 className="font-bold text-gray-800">
+                              {trip.fromCity} → {trip.toCity}
+                            </h4>
+                            <div className="text-sm text-gray-600 mt-1">
+                              <div className="flex items-center">
+                                <span className="mr-3">📅 {formatDate(trip.departureDate)}</span>
+                                <span>🕐 {formatTime(trip.departureTime)}</span>
+                              </div>
+                              <div className="mt-1">
+                                <span className="mr-3">👤 {trip.carrierId?.name || 'Anonymous'}</span>
+                                <span>⭐ {trip.carrierId?.rating || 'New'}</span>
+                              </div>
+                              <div className="mt-1">
+                                <span className="mr-3">📦 Capacity: {availableCapacity}/{trip.capacity}</span>
+                                {trip.allowedItemTypes && trip.allowedItemTypes.length > 0 && (
+                                  <span>✅ Accepts: {trip.allowedItemTypes.slice(0, 2).join(', ')}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex space-x-3">
+                            {/* View Details Button */}
+                            <button
+                              onClick={() => navigate(`/trip/${trip._id}`)}
+                              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+                            >
+                              View Details
+                            </button>
+
+                            {/* Request Delivery Button */}
+                            {/* Request Delivery Button - FIXED */}
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleRequestDelivery(trip._id);
+                              }}
+                              disabled={isRequested || isRequesting || availableCapacity <= 0 || user?.role !== 'demander'}
+                              className={`px-4 py-2 rounded-md transition-colors font-medium ${isRequested
+                                  ? 'bg-gray-300 text-gray-700 cursor-not-allowed'
+                                  : 'bg-primary text-white hover:bg-blue-700'
+                                } ${isRequesting ? 'opacity-70 cursor-not-allowed' : ''}`}
+                            >
+                              {isRequesting ? (
+                                <div className="flex items-center">
+                                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                                  Sending...
+                                </div>
+                              ) : isRequested ? (
+                                '✅ Requested'
+                              ) : availableCapacity <= 0 ? (
+                                '❌ No Capacity'
+                              ) : (
+                                '📦 Request Delivery'
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-4 text-center">
+                  <Link to="/trips" className="text-primary hover:underline">
+                    View all available trips →
+                  </Link>
+                </div>
+              </div>
+            )}
+
+            {/* Clear Filters Button */}
+            {(searchQuery.from || searchQuery.to || searchQuery.date || searchResults.length > 0) && !searchLoading && (
+              <div className="flex justify-end">
+                <button
+                  onClick={() => {
+                    setSearchQuery({ from: '', to: '', date: '' });
+                    setSearchResults([]);
+                    setSearchError('');
+                    setRequestedTrips(new Set());
+                  }}
+                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md"
+                >
+                  ✕ Clear All Filters
+                </button>
+              </div>
+            )}
+
+            {/* No Results Message (when search was performed but no results) */}
+            {searchResults.length === 0 && searchQuery.from && searchQuery.to && !searchLoading && !searchError && (
+              <div className="bg-white rounded-lg shadow p-5 text-center">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <span className="text-gray-400 text-2xl">🚗</span>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-800 mb-2">No trips found</h3>
+                <p className="text-gray-600 mb-4">
+                  No trips available from {searchQuery.from} to {searchQuery.to}
+                  {searchQuery.date && ` on ${searchQuery.date}`}
+                </p>
+                <div className="space-x-4">
+                  <button
+                    onClick={() => {
+                      setSearchQuery({ from: '', to: '', date: '' });
+                      setSearchResults([]);
+                    }}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+                  >
+                    Try Different Search
+                  </button>
+                  <Link
+                    to="/post-request"
+                    className="inline-block px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600"
+                  >
+                    Post Delivery Request Anyway
+                  </Link>
+                </div>
+              </div>
+            )}
+
+            {/* Post Request Section (only show if no search or no results) */}
+            {(searchResults.length === 0 && !searchQuery.from && !searchQuery.to) && (
+              <div className="bg-white rounded-lg shadow p-5">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">Post Delivery Request</h3>
+
                 <div className="text-center py-8">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <span className="text-gray-400 text-2xl">📊</span>
-                  </div>
-                  <p className="text-gray-500">Start posting trips or requests to see activity</p>
+                  <p className="text-gray-500 mb-4">Need something delivered? Post a delivery request</p>
+                  <Link
+                    to="/post-request"
+                    className="inline-block px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
+                  >
+                    + Post Delivery Request
+                  </Link>
                 </div>
               </div>
-            </div>
+            )}
           </div>
+        ) : (
+          // CARRIER SECTION
+          <div className="space-y-6">
+            <h2 className="text-xl font-bold text-gray-800">🚗 Trip Carrier Dashboard</h2>
 
-          {/* Right Column - Profile & Status */}
-          <div className="space-y-8">
-            {/* Profile Card */}
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <div className="flex items-center mb-6">
-                <div className="w-16 h-16 bg-gradient-to-r from-primary to-accent rounded-full flex items-center justify-center mr-4">
-                  <span className="text-white text-2xl font-bold">
-                    {user?.name?.charAt(0).toUpperCase()}
-                  </span>
-                </div>
-                <div>
-                  <h3 className="font-bold text-gray-800 text-lg">{user?.name}</h3>
-                  <p className="text-gray-600">{user?.email}</p>
-                  <div className="flex items-center mt-1">
-                    <span className="text-yellow-500 mr-1">⭐</span>
-                    <span className="text-gray-700 font-medium">{user?.rating || 0}.0</span>
-                    <span className="text-gray-500 text-sm ml-2">({user?.totalDeliveries || 0} deliveries)</span>
-                  </div>
-                </div>
+            {/* Post Trip Section */}
+            <div className="bg-white rounded-lg shadow p-5">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">Post Your Trip</h3>
+
+              <div className="text-center py-8">
+                <p className="text-gray-500 mb-4">Planning a trip? Share your travel plans to earn money</p>
+                <Link
+                  to="/post-trip"
+                  className="inline-block px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+                >
+                  + Post Your Trip
+                </Link>
               </div>
-              
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
-                      <span className="text-blue-600">📱</span>
-                    </div>
-                    <span className="text-gray-700">Phone</span>
-                  </div>
-                  <span className="font-medium">+91 {user?.phone}</span>
-                </div>
-                
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center mr-3">
-                      <span className="text-green-600">👤</span>
-                    </div>
-                    <span className="text-gray-700">Account Type</span>
-                  </div>
-                  <span className="font-medium capitalize">{user?.role || 'User'}</span>
-                </div>
-                
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center mr-3">
-                      <span className="text-purple-600">📅</span>
-                    </div>
-                    <span className="text-gray-700">Member Since</span>
-                  </div>
-                  <span className="font-medium">Today</span>
-                </div>
-              </div>
-              
-              <Link 
-                to="/profile/edit" 
-                className="block mt-6 w-full text-center bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium py-3 rounded-lg transition-colors"
-              >
-                Edit Profile
-              </Link>
             </div>
 
-            {/* Status Overview */}
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <h3 className="font-bold text-gray-800 mb-4">Delivery Status</h3>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
-                    <span className="text-gray-700">Pending</span>
-                  </div>
-                  <span className="font-bold">0</span>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 bg-yellow-500 rounded-full mr-2"></div>
-                    <span className="text-gray-700">In Transit</span>
-                  </div>
-                  <span className="font-bold">0</span>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
-                    <span className="text-gray-700">Delivered</span>
-                  </div>
-                  <span className="font-bold">0</span>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
-                    <span className="text-gray-700">Cancelled</span>
-                  </div>
-                  <span className="font-bold">0</span>
-                </div>
-              </div>
-              
-              <div className="mt-6 pt-6 border-t">
-                <Link 
-                  to="/my-deliveries" 
-                  className="flex items-center justify-center text-primary hover:text-blue-700 font-medium"
+            {/* Browse Delivery Requests */}
+            <div className="bg-white rounded-lg shadow p-5">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">Browse Delivery Requests</h3>
+
+              <div className="text-center py-8">
+                <p className="text-gray-500 mb-4">Browse delivery requests from item demanders</p>
+                <Link
+                  to="/requests"
+                  className="inline-block px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
                 >
-                  View All Deliveries
-                  <span className="ml-2">→</span>
+                  🔍 Browse Requests
+                </Link>
+
+                <Link
+                  to="/my-trips"
+                  className="inline-block px-4 py-2 bg-primary text-white rounded-md hover:bg-blue-600 transition-colors ml-4"
+                >
+                  📋 View My Trips
                 </Link>
               </div>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Empty State Messages */}
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-gradient-to-r from-blue-50 to-white border border-blue-100 rounded-xl p-6">
-            <div className="flex items-center mb-4">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
-                <span className="text-blue-600 text-2xl">🚗</span>
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-800">No Active Trips</h3>
-                <p className="text-gray-600 text-sm">You haven't posted any trips yet</p>
-              </div>
+        {/* Profile Info */}
+        <div className="mt-8 bg-white rounded-lg shadow p-5">
+          <h2 className="text-lg font-bold text-gray-800 mb-4">Profile Information</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <p className="text-gray-500 text-sm">Name</p>
+              <p className="font-medium">{user?.name}</p>
             </div>
-            <Link 
-              to="/post-trip" 
-              className="inline-flex items-center text-primary hover:text-blue-700 font-medium"
-            >
-              Post your first trip
-              <span className="ml-2">→</span>
-            </Link>
-          </div>
-          
-          <div className="bg-gradient-to-r from-green-50 to-white border border-green-100 rounded-xl p-6">
-            <div className="flex items-center mb-4">
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mr-4">
-                <span className="text-green-600 text-2xl">📦</span>
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-800">No Active Requests</h3>
-                <p className="text-gray-600 text-sm">You haven't made any delivery requests</p>
-              </div>
+            <div>
+              <p className="text-gray-500 text-sm">Email</p>
+              <p className="font-medium">{user?.email}</p>
             </div>
-            <Link 
-              to="/post-request" 
-              className="inline-flex items-center text-primary hover:text-blue-700 font-medium"
-            >
-              Request your first delivery
-              <span className="ml-2">→</span>
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      {/* Footer */}
-      <div className="mt-12 border-t bg-white py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center text-gray-500 text-sm">
-            <p>© 2024 PeerParcel. All rights reserved.</p>
-            <p className="mt-1">Need help? <Link to="/contact" className="text-primary hover:underline">Contact Support</Link></p>
+            <div>
+              <p className="text-gray-500 text-sm">Phone</p>
+              <p className="font-medium">+91 {user?.phone}</p>
+            </div>
+            <div>
+              <p className="text-gray-500 text-sm">Account Type</p>
+              <p className="font-medium capitalize">{user?.role || 'User'}</p>
+            </div>
           </div>
         </div>
       </div>

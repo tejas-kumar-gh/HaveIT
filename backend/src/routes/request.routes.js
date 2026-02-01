@@ -1,18 +1,17 @@
+// This should be your request.routes.js file structure:
 const express = require("express");
-const { createRequest, getRequests, respondRequest ,myRequests} = require("../controllers/request.controller");
+const { 
+  createRequest, 
+  checkRequest, 
+  getTripRequests,
+  updateRequestStatus 
+} = require("../controllers/request.controller");
 const authMiddleware = require("../middlewares/auth.middleware");
-
 const router = express.Router();
 
-// Item Demander posts request
 router.post("/", authMiddleware, createRequest);
-
-// Carriers view pending requests
-router.get("/", authMiddleware, getRequests);
-
-// Carrier responds (accept/reject)
-router.post("/respond", authMiddleware, respondRequest);
-
-router.get("/my", authMiddleware, myRequests);
+router.get("/check/:tripId", authMiddleware, checkRequest);
+router.get("/trip/:tripId", authMiddleware, getTripRequests);
+router.put("/:requestId/status", authMiddleware, updateRequestStatus);
 
 module.exports = router;

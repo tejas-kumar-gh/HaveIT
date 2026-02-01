@@ -74,7 +74,7 @@ const handleSubmit = async (e) => {
       localStorage.setItem('token', response.data.token);
 
       // IMPORTANT: Force page reload to update navbar
-      window.location.href = '/dashboard';
+     navigate('/dashboard');
       // OR navigate and reload: navigate('/dashboard'); window.location.reload();
       
       // Don't use alert - it blocks the redirect
