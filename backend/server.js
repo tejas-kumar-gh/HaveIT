@@ -13,7 +13,7 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: "http://localhost:5173", // frontend URL later
+  origin: "https://have-it-sooty.vercel.app/", // frontend URL later
   credentials: true
 }));
 app.use(express.json());
