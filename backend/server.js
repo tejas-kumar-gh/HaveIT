@@ -13,13 +13,24 @@ const app = express();
 
 // Middleware
 
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://have-it-sooty.vercel.app"
+];
+
 app.use(cors({
-  origin: [
-    "http://localhost:5173", // for local dev
-    "https://have-it-sooty.vercel.app" // production frontend
-  ],
+  origin: function(origin, callback) {
+    // allow requests with no origin (like Postman)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = `The CORS policy for this site does not allow access from the specified Origin.`;
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
   credentials: true
 }));
+
 
 
 app.use(express.json());
@@ -34,9 +45,9 @@ app.use("/api/trips", tripRoutes);
 app.use("/api/requests", requestRoutes);
 
 // Test
-app.get("/", (req, res) => {
-  res.send("welcome to our home page of site");
-});
+// app.get("/", (req, res) => {
+//   res.send("welcome to our home page of site");
+// });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
