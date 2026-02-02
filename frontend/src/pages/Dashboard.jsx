@@ -89,10 +89,11 @@ const Dashboard = () => {
     console.log('Token:', localStorage.getItem('token'));
     console.log('isAuthenticated:', localStorage.getItem('isAuthenticated'));
 
-    if (!user || user.role !== 'demander') {
-      alert('Only item demanders can request delivery');
-      return;
-    }
+   if (!user) {
+  alert('Please login first');
+  return;
+}
+
 
     setRequestingTrip(tripId);
 
@@ -433,7 +434,8 @@ const Dashboard = () => {
                                 e.stopPropagation();
                                 handleRequestDelivery(trip._id);
                               }}
-                              disabled={isRequested || isRequesting || availableCapacity <= 0 || user?.role !== 'demander'}
+                             disabled={isRequested || isRequesting || availableCapacity <= 0}
+
                               className={`px-4 py-2 rounded-md transition-colors font-medium ${isRequested
                                   ? 'bg-gray-300 text-gray-700 cursor-not-allowed'
                                   : 'bg-primary text-white hover:bg-blue-700'
