@@ -102,7 +102,7 @@ const Signup = () => {
       console.log('📡 Sending signup request to:', `${API_URL}/auth/register`);
       console.log('📦 Data:', userData);
 
-      // Make API call to backend - Note: Use /register endpoint
+      // Make API call to backend 
       const response = await axios.post(`${API_URL}/api/auth/register`, userData, {
         headers: {
           'Content-Type': 'application/json',
