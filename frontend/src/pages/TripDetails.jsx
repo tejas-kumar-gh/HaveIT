@@ -1,147 +1,69 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
-import Navbar from '../components/Navbar';
+import React, { useEffect, useState } from "react";
+import axios from "axios";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
 const TripDetails = () => {
   const { id } = useParams();
+
+  const [searchParams] = useSearchParams();
+  const requestId = searchParams.get("requestId") || id;
+
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+  const token = localStorage.getItem("token");
   const navigate = useNavigate();
+
   const [trip, setTrip] = useState(null);
+  const [request, setRequest] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
-  const [isRequested, setIsRequested] = useState(false);
-  const [showRequestForm, setShowRequestForm] = useState(false);
-  const [requestLoading, setRequestLoading] = useState(false);
-  const [requestData, setRequestData] = useState({
-    itemName: '',
-    itemType: '',
-    quantity: 1,
-    phone: '',
-    email: '',
-    price: ''
-  });
-  
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
-
-  useEffect(() => {
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      const parsedUser = JSON.parse(userData);
-      setUser(parsedUser);
-      setRequestData(prev => ({
-        ...prev,
-        phone: parsedUser.phone || '',
-        email: parsedUser.email || ''
-      }));
-    }
-    fetchTripDetails();
-  }, [id]);
-
-  const fetchTripDetails = async () => {
+useEffect(() => {
+  const fetchDetails = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_URL}/trips/${id}`, {
-        withCredentials: true
-      });
-      setTrip(response.data);
-      
-      // Check if user already requested this trip
-      checkIfRequested();
-    } catch (error) {
-      console.error('Error fetching trip:', error);
+
+      // 🔹 CASE 1: opened via request
+      if (searchParams.get("requestId")) {
+        const res = await axios.get(
+          `${API_URL}/requests/${searchParams.get("requestId")}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+
+        setRequest(res.data.request);
+        setTrip(res.data.request.tripId);
+      }
+
+      // 🔹 CASE 2: opened via trip id
+      else if (id) {
+        const res = await axios.get(
+          `${API_URL}/trips/${id}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+
+        setTrip(res.data.trip);
+        setRequest(null);
+      }
+
+      else {
+        setTrip(null);
+      }
+
+    } catch (err) {
+      console.error("Failed to load details", err);
+      setTrip(null);
     } finally {
       setLoading(false);
     }
   };
 
-  const checkIfRequested = async () => {
-    try {
-      const response = await axios.get(`${API_URL}/requests/check/${id}`, {
-        withCredentials: true
-      });
-      setIsRequested(response.data.requested);
-    } catch (error) {
-      console.error('Error checking request:', error);
-    }
-  };
-
-  const formatDate = (dateString) => {
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('en-IN', {
-        weekday: 'short',
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      });
-    } catch (error) {
-      return dateString;
-    }
-  };
-
-  const formatTime = (timeString) => {
-    if (!timeString) return '';
-    return timeString;
-  };
-
-  const calculateAvailableCapacity = () => {
-    return trip.capacity - (trip.totalDeliveredItems || 0);
-  };
-
-  const handleRequestChange = (e) => {
-    const { name, value } = e.target;
-    setRequestData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
-  const handleRequestSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!requestData.itemName.trim() || !requestData.itemType.trim() || 
-        !requestData.phone.trim() || !requestData.email.trim() || !requestData.price) {
-      alert('Please fill all required fields');
-      return;
-    }
-
-    if (parseInt(requestData.quantity) < 1) {
-      alert('Quantity must be at least 1');
-      return;
-    }
-
-    setRequestLoading(true);
-    try {
-      await axios.post(`${API_URL}/requests`, {
-        tripId: id,
-        itemName: requestData.itemName,
-        itemType: requestData.itemType,
-        quantity: parseInt(requestData.quantity),
-        phone: requestData.phone,
-        email: requestData.email,
-        price: parseFloat(requestData.price)
-      }, {
-        withCredentials: true
-      });
-      setIsRequested(true);
-      setShowRequestForm(false);
-    } catch (error) {
-      console.error('Error requesting delivery:', error);
-      alert(error.response?.data?.message || 'Failed to request delivery');
-    } finally {
-      setRequestLoading(false);
-    }
-  };
+  fetchDetails();
+}, [id, searchParams]);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <Navbar />
-        <div className="max-w-7xl mx-auto px-4 py-8">
-          <div className="text-center py-12">
-            <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading trip details...</p>
-          </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading trip details...</p>
         </div>
       </div>
     );
@@ -149,294 +71,198 @@ const TripDetails = () => {
 
   if (!trip) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <Navbar />
-        <div className="max-w-7xl mx-auto px-4 py-8">
-          <div className="text-center py-12">
-            <h2 className="text-2xl font-bold text-gray-800 mb-4">Trip not found</h2>
-            <Link to="/dashboard" className="text-primary hover:underline">
-              ← Back to Dashboard
-            </Link>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto">
+          <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <span className="text-3xl">🚫</span>
           </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-3">Trip Not Found</h2>
+          <p className="text-gray-600 mb-6">The requested trip details could not be loaded or do not exist.</p>
+          <button
+            onClick={() => navigate(-1)}
+            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-emerald-600 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-emerald-700 transform hover:-translate-y-0.5 transition-all duration-300"
+          >
+            Go Back
+          </button>
         </div>
       </div>
     );
   }
 
-  const availableCapacity = calculateAvailableCapacity();
-  const canRequest = user?.role === 'demander' && availableCapacity > 0 && !isRequested;
-
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Navbar />
-      
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        {/* Back Button */}
-        <div className="mb-6">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-emerald-50 py-8 px-4">
+      <div className="max-w-4xl mx-auto">
+        {/* HEADER */}
+        <div className="mb-8">
           <button
             onClick={() => navigate(-1)}
-            className="flex items-center text-primary hover:underline"
+            className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium mb-4 transition duration-200"
           >
-            ← Back
+            <span className="text-xl">←</span>
+            Back to Previous Page
           </button>
+          <h1 className="text-3xl font-bold text-gray-800 mb-2">Trip Details</h1>
+          <p className="text-gray-600">View complete information about this delivery trip</p>
         </div>
 
-        {/* Trip Card */}
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden mb-6">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-blue-500 to-blue-600 p-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between">
+        <div className="space-y-8">
+          {/* TRIP DETAILS CARD */}
+          <div className="bg-white rounded-2xl shadow-xl p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
+                <span className="text-white text-xl">🚗</span>
+              </div>
               <div>
-                <h1 className="text-2xl md:text-3xl font-bold text-white">
-                  {trip.fromCity} → {trip.toCity}
-                </h1>
-                <p className="text-blue-100 mt-2">
-                  Posted by {trip.carrierId?.name || 'Anonymous'}
-                </p>
-              </div>
-              <div className="mt-4 md:mt-0">
-                <span className="inline-block bg-white text-blue-600 px-4 py-2 rounded-full font-bold">
-                  {availableCapacity} spots left
-                </span>
+                <h2 className="text-xl font-bold text-gray-800">Trip Information</h2>
+                <p className="text-gray-600">Complete journey details</p>
               </div>
             </div>
-          </div>
 
-          {/* Trip Details */}
-          <div className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Left Column */}
-              <div className="space-y-6">
-                {/* Departure Details */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-3">Departure</h3>
-                  <div className="space-y-2">
-                    <div className="flex items-center">
-                      <span className="text-gray-500 w-32">Date:</span>
-                      <span className="font-medium">{formatDate(trip.departureDate)}</span>
-                    </div>
-                    <div className="flex items-center">
-                      <span className="text-gray-500 w-32">Time:</span>
-                      <span className="font-medium">{formatTime(trip.departureTime)}</span>
-                    </div>
-                  </div>
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <p className="text-sm text-gray-500 mb-1">From City</p>
+                  <p className="text-lg font-bold text-gray-800">{trip.fromCity}</p>
                 </div>
-
-                {/* Arrival Details */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-3">Arrival</h3>
-                  <div className="space-y-2">
-                    <div className="flex items-center">
-                      <span className="text-gray-500 w-32">Date:</span>
-                      <span className="font-medium">{formatDate(trip.arrivalDate)}</span>
-                    </div>
-                    <div className="flex items-center">
-                      <span className="text-gray-500 w-32">Time:</span>
-                      <span className="font-medium">{formatTime(trip.arrivalTime)}</span>
-                    </div>
-                  </div>
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <p className="text-sm text-gray-500 mb-1">To City</p>
+                  <p className="text-lg font-bold text-gray-800">{trip.toCity}</p>
                 </div>
-
-                {/* Capacity */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-3">Capacity</h3>
-                  <div className="flex items-center">
-                    <div className="w-full bg-gray-200 rounded-full h-4">
-                      <div 
-                        className="bg-green-500 h-4 rounded-full"
-                        style={{ width: `${(availableCapacity / trip.capacity) * 100}%` }}
-                      ></div>
-                    </div>
-                    <span className="ml-4 font-medium">
-                      {availableCapacity}/{trip.capacity} items
-                    </span>
-                  </div>
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <p className="text-sm text-gray-500 mb-1">Date</p>
+                  <p className="text-lg font-bold text-gray-800">
+                    {new Date(trip.departureDate).toLocaleDateString('en-US', {
+                      weekday: 'long',
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    })}
+                  </p>
                 </div>
               </div>
 
-              {/* Right Column */}
-              <div className="space-y-6">
-                {/* Carrier Info */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-3">Carrier Information</h3>
-                  <div className="space-y-2">
-                    <div className="flex items-center">
-                      <span className="text-gray-500 w-32">Name:</span>
-                      <span className="font-medium">{trip.carrierId?.name || 'Anonymous'}</span>
-                    </div>
-                    <div className="flex items-center">
-                      <span className="text-gray-500 w-32">Rating:</span>
-                      <span className="font-medium">⭐ {trip.carrierId?.rating || 'New'}</span>
-                    </div>
-                    {trip.carrierId?.phone && (
-                      <div className="flex items-center">
-                        <span className="text-gray-500 w-32">Phone:</span>
-                        <span className="font-medium">+91 {trip.carrierId.phone}</span>
-                      </div>
-                    )}
-                  </div>
+              <div className="space-y-4">
+                <div className="bg-blue-50 rounded-xl p-4">
+                  <p className="text-sm text-blue-600 mb-1">Capacity</p>
+                  <p className="text-lg font-bold text-blue-700">{trip.capacity} items</p>
                 </div>
-
-                {/* Item Types */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-3">Allowed Item Types</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {trip.allowedItemTypes && trip.allowedItemTypes.length > 0 ? (
-                      trip.allowedItemTypes.map((type, index) => (
-                        <span 
-                          key={index}
-                          className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
-                        >
-                          {type}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-gray-500">Any type accepted</span>
-                    )}
-                  </div>
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <p className="text-sm text-gray-500 mb-1">Available Space</p>
+                  <p className="text-lg font-bold text-gray-800">
+                    {trip.capacity - (trip.totalDeliveredItems || 0)}/{trip.capacity}
+                  </p>
                 </div>
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <p className="text-sm text-gray-500 mb-1">Departure Time</p>
+                  <p className="text-lg font-bold text-gray-800">{trip.departureTime || "To be confirmed"}</p>
+                </div>
+              </div>
+            </div>
 
-                {/* Locations */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-3">Locations</h3>
-                  <div className="space-y-2">
-                    {trip.pickupLocation && (
-                      <div>
-                        <span className="text-gray-500">Pickup: </span>
-                        <span className="font-medium">{trip.pickupLocation}</span>
-                      </div>
-                    )}
-                    {trip.dropLocation && (
-                      <div>
-                        <span className="text-gray-500">Drop: </span>
-                        <span className="font-medium">{trip.dropLocation}</span>
-                      </div>
-                    )}
+            <div className="mt-8 pt-8 border-t border-gray-200">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center">
+                  <span className="text-emerald-600">📍</span>
+                </div>
+                <h3 className="font-bold text-lg text-gray-800">Journey Route</h3>
+              </div>
+              <div className="relative">
+                <div className="flex items-center justify-center">
+                  <div className="text-center px-6 py-3 bg-blue-100 rounded-lg">
+                    <p className="text-lg font-bold text-blue-700">
+                      {trip.fromCity} → {trip.toCity}
+                    </p>
+                    <p className="text-blue-600">Direct Route</p>
                   </div>
                 </div>
               </div>
             </div>
           </div>
+
+          {/* REQUESTED ITEM DETAILS CARD */}
+          {request && (
+            <div className="bg-white rounded-2xl shadow-xl p-6">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-12 h-12 bg-gradient-to-r from-emerald-500 to-green-500 rounded-full flex items-center justify-center">
+                  <span className="text-white text-xl">📦</span>
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800">Requested Item Details</h2>
+                  <p className="text-gray-600">Information about the delivery item</p>
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-6 mb-8">
+                <div className="space-y-4">
+                  <div className="bg-emerald-50 rounded-xl p-4">
+                    <p className="text-sm text-emerald-600 mb-1">Item Name</p>
+                    <p className="text-lg font-bold text-gray-800">{request.itemName}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-sm text-gray-500 mb-1">Item Type</p>
+                    <p className="text-lg font-bold text-gray-800">{request.itemType || "General"}</p>
+                  </div>
+                  <div className="bg-blue-50 rounded-xl p-4">
+                    <p className="text-sm text-blue-600 mb-1">Quantity</p>
+                    <p className="text-lg font-bold text-blue-700">{request.quantity} units</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="bg-purple-50 rounded-xl p-4">
+                    <p className="text-sm text-purple-600 mb-1">Price</p>
+                    <p className="text-lg font-bold text-purple-700">₹{request.price}</p>
+                  </div>
+                  <div className={`rounded-xl p-4 ${
+                    request.status === 'accepted' ? 'bg-green-50 border border-green-200' :
+                    request.status === 'rejected' ? 'bg-red-50 border border-red-200' :
+                    'bg-yellow-50 border border-yellow-200'
+                  }`}>
+                    <p className="text-sm mb-1">Status</p>
+                    <p className={`text-lg font-bold ${
+                      request.status === 'accepted' ? 'text-green-700' :
+                      request.status === 'rejected' ? 'text-red-700' :
+                      'text-yellow-700'
+                    }`}>
+                      {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-sm text-gray-500 mb-1">Request ID</p>
+                    <p className="text-lg font-mono font-bold text-gray-800">{request._id?.slice(-8)}</p>
+                  </div>
+                </div>
+              </div>
+
+              {request.description && (
+                <div className="mt-6 pt-6 border-t border-gray-200">
+                  <h3 className="font-bold text-lg text-gray-800 mb-3">Item Description</h3>
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-gray-700">{request.description}</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-8 pt-8 border-t border-gray-200">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                    <span className="text-blue-600">👤</span>
+                  </div>
+                  <h3 className="font-bold text-lg text-gray-800">Requester Information</h3>
+                </div>
+                <div className="bg-blue-50 rounded-xl p-4">
+                  <p className="font-medium text-gray-800 mb-1">{request.demanderId?.name || "Unknown User"}</p>
+                  {request.demanderId?.email && (
+                    <p className="text-blue-600">{request.demanderId.email}</p>
+                  )}
+                  {request.demanderId?.phone && (
+                    <p className="text-gray-600 mt-1">Phone: {request.demanderId.phone}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-
-        {/* Request Section */}
-        {user?.role === 'demander' && (
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            {isRequested ? (
-              <div className="text-center py-6">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <span className="text-green-600 text-2xl">✅</span>
-                </div>
-                <h3 className="text-xl font-bold text-gray-800 mb-2">Delivery Request Sent</h3>
-                <p className="text-gray-600">Your delivery request has been sent to the carrier.</p>
-              </div>
-            ) : showRequestForm ? (
-              <form onSubmit={handleRequestSubmit}>
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">Request Delivery</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <label className="block text-gray-700 text-sm mb-2">Item Name *</label>
-                    <input
-                      type="text"
-                      name="itemName"
-                      value={requestData.itemName}
-                      onChange={handleRequestChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-gray-700 text-sm mb-2">Item Type *</label>
-                    <input
-                      type="text"
-                      name="itemType"
-                      value={requestData.itemType}
-                      onChange={handleRequestChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-gray-700 text-sm mb-2">Quantity *</label>
-                    <input
-                      type="number"
-                      name="quantity"
-                      value={requestData.quantity}
-                      onChange={handleRequestChange}
-                      min="1"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-gray-700 text-sm mb-2">Price (₹) *</label>
-                    <input
-                      type="number"
-                      name="price"
-                      value={requestData.price}
-                      onChange={handleRequestChange}
-                      step="0.01"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-gray-700 text-sm mb-2">Phone *</label>
-                    <input
-                      type="tel"
-                      name="phone"
-                      value={requestData.phone}
-                      onChange={handleRequestChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-gray-700 text-sm mb-2">Email *</label>
-                    <input
-                      type="email"
-                      name="email"
-                      value={requestData.email}
-                      onChange={handleRequestChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="flex space-x-3">
-                  <button
-                    type="submit"
-                    disabled={requestLoading}
-                    className="bg-primary text-white px-6 py-2 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-70"
-                  >
-                    {requestLoading ? 'Sending...' : 'Submit Request'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowRequestForm(false)}
-                    className="px-6 py-2 border border-gray-300 rounded-md"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <div className="text-center">
-                <button
-                  onClick={() => setShowRequestForm(true)}
-                  disabled={!canRequest}
-                  className={`px-6 py-3 rounded-lg font-bold text-lg transition-colors ${
-                    canRequest
-                      ? 'bg-primary text-white hover:bg-blue-700'
-                      : 'bg-gray-300 text-gray-700 cursor-not-allowed'
-                  }`}
-                >
-                  {availableCapacity <= 0 ? '❌ No Capacity Available' : '📦 Request Delivery'}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );

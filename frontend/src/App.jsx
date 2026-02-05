@@ -9,10 +9,11 @@ import About from './pages/About';
 import Contact from './pages/Contact';
 import Dashboard from './pages/Dashboard';
 import PostTrip from './pages/PostTrip';
-import Trips from './pages/Trips';
-import MyTrips from './pages/MyTrips';
+import TripCarrier from './pages/TripCarrier';
 import TripDetails from './pages/TripDetails';
-import TripResponses from './pages/TripResponses';
+import ItemDemander from './pages/ItemDemander';
+import RequestForm from './pages/RequestForm';
+import CarrierRequests from './pages/CarrierRequests';
 function App() {
   return (
     <Router>
@@ -24,12 +25,18 @@ function App() {
         <Route path="/about" element={<About />}></Route>
         <Route path="/contact" element={<Contact />}></Route>
         <Route path='/dashboard' element={<Dashboard />} ></Route>
-        <Route path="/post-trip" element={<PostTrip />} />
-        <Route path="/trips" element={<Trips />} />
-        <Route path="/my-trips" element={<MyTrips />} />
-        <Route path="/trip/:id" element={<TripDetails />} />
-        <Route path="/trip/:tripId/responses" element={<TripResponses />} />
+        <Route path='/post-trip' element={<PostTrip />} ></Route>
+        <Route path='/carrier' element={<TripCarrier />} ></Route>
+         <Route path='/trip/:id' element={<TripDetails />} ></Route>
+          <Route path='/item-demander' element={<ItemDemander />} ></Route>
+ <Route path='/request/:tripId' element={<RequestForm />} ></Route>
+        <Route path="/carrier/requests" element={<CarrierRequests />} />
+
+    
+    carrier/requests
       </Routes>
+        
+    
     </Router>
   );
 }

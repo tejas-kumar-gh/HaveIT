@@ -63,7 +63,7 @@ const Signup = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    
+
     // Format phone number as user types
     if (name === 'phone') {
       // Remove non-numeric characters
@@ -74,7 +74,7 @@ const Signup = () => {
     } else {
       setFormData({ ...formData, [name]: value });
     }
-    
+
     // Clear error for this field when user starts typing
     if (errors[name]) {
       setErrors({ ...errors, [name]: '' });
@@ -83,7 +83,7 @@ const Signup = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     // Validate form
     const validationErrors = validateForm();
     if (Object.keys(validationErrors).length > 0) {
@@ -98,7 +98,7 @@ const Signup = () => {
     try {
       // Prepare data for API (remove confirmPassword as it's not needed in backend)
       const { confirmPassword, ...userData } = formData;
-      
+
       console.log('📡 Sending signup request to:', `${API_URL}/auth/register`);
       console.log('📦 Data:', userData);
 
@@ -111,28 +111,20 @@ const Signup = () => {
       });
 
       console.log('✅ Signup response:', response.data);
+ if (response.status === 201 || response.status === 200) {
+  setSuccessMessage('Account created successfully! Redirecting to dashboard...');
 
-      if (response.status === 201 || response.status === 200) {
-        setSuccessMessage('Account created successfully! Redirecting to dashboard...');
-        
-        // Store user data in localStorage
-        const userData = response.data.user;
-        localStorage.setItem('user', JSON.stringify(userData));
-        localStorage.setItem('isAuthenticated', 'true');
-        localStorage.setItem('token', response.data.token);
-        
-        // Clear form
-        setFormData({
-          name: '',
-          email: '',
-          phone: '',
-          password: '',
-          confirmPassword: ''
-        });
+  navigate('/dashboard');
 
-        // Redirect to dashboard immediately (no delay)
-        navigate('/dashboard');
-      }
+  setFormData({
+    name: '',
+    email: '',
+    phone: '',
+    password: '',
+    confirmPassword: ''
+  });
+}
+
     } catch (error) {
       console.error('❌ Signup error:', error);
       console.error('❌ Error details:', {
@@ -140,7 +132,7 @@ const Signup = () => {
         response: error.response?.data,
         status: error.response?.status
       });
-      
+
       // Handle different error responses
       if (error.response) {
         // Server responded with error status
@@ -185,7 +177,7 @@ const Signup = () => {
           <div className="w-10 h-10 bg-primary rounded-full mr-2"></div>
           <span className="text-2xl font-bold text-gray-800">PeerParcel</span>
         </Link>
-        
+
         <h2 className="text-3xl font-bold text-center text-gray-800 mb-2">
           Create Account
         </h2>
@@ -218,9 +210,8 @@ const Signup = () => {
               name="name"
               value={formData.name}
               onChange={handleChange}
-              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent ${
-                errors.name ? 'border-red-500' : 'border-gray-300'
-              }`}
+              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent ${errors.name ? 'border-red-500' : 'border-gray-300'
+                }`}
               placeholder="Enter your full name"
               disabled={loading}
             />
@@ -228,7 +219,7 @@ const Signup = () => {
               <p className="text-red-500 text-sm mt-1">{errors.name}</p>
             )}
           </div>
-          
+
           {/* Email Field */}
           <div>
             <label className="block text-gray-700 mb-2">
@@ -239,9 +230,8 @@ const Signup = () => {
               name="email"
               value={formData.email}
               onChange={handleChange}
-              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent ${
-                errors.email ? 'border-red-500' : 'border-gray-300'
-              }`}
+              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent ${errors.email ? 'border-red-500' : 'border-gray-300'
+                }`}
               placeholder="Enter your email"
               disabled={loading}
             />
@@ -249,7 +239,7 @@ const Signup = () => {
               <p className="text-red-500 text-sm mt-1">{errors.email}</p>
             )}
           </div>
-          
+
           {/* Phone Field */}
           <div>
             <label className="block text-gray-700 mb-2">
@@ -262,9 +252,8 @@ const Signup = () => {
                 name="phone"
                 value={formData.phone}
                 onChange={handleChange}
-                className={`w-full pl-12 px-4 py-3 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent ${
-                  errors.phone ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full pl-12 px-4 py-3 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent ${errors.phone ? 'border-red-500' : 'border-gray-300'
+                  }`}
                 placeholder="9876543210"
                 maxLength="10"
                 disabled={loading}
@@ -274,7 +263,7 @@ const Signup = () => {
               <p className="text-red-500 text-sm mt-1">{errors.phone}</p>
             )}
           </div>
-          
+
           {/* Password Field */}
           <div>
             <label className="block text-gray-700 mb-2">
@@ -285,9 +274,8 @@ const Signup = () => {
               name="password"
               value={formData.password}
               onChange={handleChange}
-              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent ${
-                errors.password ? 'border-red-500' : 'border-gray-300'
-              }`}
+              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent ${errors.password ? 'border-red-500' : 'border-gray-300'
+                }`}
               placeholder="Create a password (min. 6 characters)"
               disabled={loading}
             />
@@ -295,7 +283,7 @@ const Signup = () => {
               <p className="text-red-500 text-sm mt-1">{errors.password}</p>
             )}
           </div>
-          
+
           {/* Confirm Password Field */}
           <div>
             <label className="block text-gray-700 mb-2">
@@ -306,9 +294,8 @@ const Signup = () => {
               name="confirmPassword"
               value={formData.confirmPassword}
               onChange={handleChange}
-              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent ${
-                errors.confirmPassword ? 'border-red-500' : 'border-gray-300'
-              }`}
+              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent ${errors.confirmPassword ? 'border-red-500' : 'border-gray-300'
+                }`}
               placeholder="Confirm your password"
               disabled={loading}
             />
@@ -316,7 +303,7 @@ const Signup = () => {
               <p className="text-red-500 text-sm mt-1">{errors.confirmPassword}</p>
             )}
           </div>
-          
+
           <button
             type="submit"
             disabled={loading}
@@ -332,7 +319,7 @@ const Signup = () => {
             )}
           </button>
         </form>
-        
+
         <div className="mt-6 text-center">
           <p className="text-gray-600">
             Already have an account?{' '}
@@ -341,7 +328,7 @@ const Signup = () => {
             </Link>
           </p>
         </div>
-        
+
         <div className="mt-8 text-center">
           <Link to="/" className="text-gray-600 hover:text-primary">
             ← Back to Home
