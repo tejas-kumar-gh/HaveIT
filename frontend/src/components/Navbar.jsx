@@ -69,7 +69,7 @@ const Navbar = () => {
           <div className="flex items-center">
             <Link to="/" className="flex items-center space-x-2">
               <div className="w-8 h-8 bg-primary rounded-full"></div>
-              <span className="text-2xl font-bold text-gray-800">PeerParcel</span>
+              <span className="text-2xl font-bold text-gray-800">HaveIT</span>
             </Link>
           </div>
           
