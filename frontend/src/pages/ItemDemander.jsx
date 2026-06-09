@@ -18,8 +18,89 @@ const ItemDemander = ({ user }) => {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState("");
   const token = localStorage.getItem("token");
+  const [reviewingRequestId, setReviewingRequestId] = useState(null);
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState("");
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+
+  const handleReviewSubmit = async (e, r) => {
+    e.preventDefault();
+    setReviewSubmitting(true);
+    try {
+      // Access carrier id from tripId or request object
+      const carrierId = r.tripId?.carrierId?._id || r.tripId?.carrierId || r.carrierId?._id || r.carrierId;
+      if (!carrierId) {
+        alert("Carrier details not found for this trip");
+        return;
+      }
+      await axios.post(`${API_URL}/reviews`, {
+        revieweeId: carrierId,
+        requestId: r._id,
+        rating,
+        comment
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      alert("Thank you for your rating!");
+      setReviewingRequestId(null);
+      setComment("");
+      fetchRequests();
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.message || "Failed to submit review");
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
+
   const calculateAvailableCapacity = (trip) => trip.capacity - (trip.totalDeliveredItems || 0);
   const formatDate = (date) => new Date(date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+
+  const renderTimeline = (status) => {
+    if (status === 'rejected') {
+      return (
+        <div className="flex items-center text-red-600 font-semibold gap-2 mt-4 bg-red-50 p-3 rounded-lg border border-red-200">
+          <span>🚫</span> Request Rejected by Carrier
+        </div>
+      );
+    }
+    const steps = [
+      { label: 'Pending', key: 'pending' },
+      { label: 'Accepted', key: 'accepted' },
+      { label: 'Picked Up', key: 'picked_up' },
+      { label: 'Delivered', key: 'delivered' }
+    ];
+    const currentIndex = steps.findIndex(s => s.key === status);
+    return (
+      <div className="w-full mt-6 px-2">
+        <div className="flex items-center justify-between relative">
+          <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 bg-gray-200 z-0"></div>
+          <div 
+            className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-blue-500 transition-all duration-500 z-0" 
+            style={{ width: `${(currentIndex / (steps.length - 1)) * 100}%` }}
+          ></div>
+          {steps.map((step, idx) => {
+            const isCompleted = idx <= currentIndex;
+            const isActive = idx === currentIndex;
+            return (
+              <div key={step.key} className="flex flex-col items-center z-10 relative">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-300 ${
+                  isActive ? 'bg-blue-600 text-white ring-4 ring-blue-100' :
+                  isCompleted ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-500'
+                }`}>
+                  {isCompleted && !isActive ? '✓' : idx + 1}
+                </div>
+                <span className={`text-xs mt-2 font-medium ${
+                  isActive ? 'text-blue-600 font-bold' :
+                  isCompleted ? 'text-emerald-600' : 'text-gray-400'
+                }`}>{step.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   // Fetch trips
   const fetchTrips = async (pageNumber = 1) => {
@@ -216,14 +297,14 @@ const ItemDemander = ({ user }) => {
                   <div className="mb-4 md:mb-0">
                     <div className="flex items-center gap-3 mb-2">
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        r.status === "accepted" ? "bg-green-100" : 
+                        r.status === "accepted" || r.status === "picked_up" || r.status === "delivered" ? "bg-green-100" : 
                         r.status === "rejected" ? "bg-red-100" : "bg-yellow-100"
                       }`}>
                         <span className={`text-lg ${
-                          r.status === "accepted" ? "text-green-600" : 
+                          r.status === "accepted" || r.status === "picked_up" || r.status === "delivered" ? "text-green-600" : 
                           r.status === "rejected" ? "text-red-600" : "text-yellow-600"
                         }`}>
-                          {r.status === "accepted" ? "✓" : r.status === "rejected" ? "✗" : "⏳"}
+                          {r.status === "delivered" ? "✓" : r.status === "rejected" ? "✗" : "⏳"}
                         </span>
                       </div>
                       <div>
@@ -237,14 +318,102 @@ const ItemDemander = ({ user }) => {
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    <div className={`px-3 py-1 rounded-full font-medium ${
-                      r.status === "accepted" ? "bg-green-100 text-green-700" : 
+                    <div className={`px-3 py-1 rounded-full font-medium text-sm ${
+                      r.status === "delivered" || r.status === "accepted" || r.status === "picked_up" ? "bg-green-100 text-green-700" : 
                       r.status === "rejected" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
                     }`}>
-                      {r.status.toUpperCase()}
+                      {r.status.toUpperCase().replace('_', ' ')}
                     </div>
                   </div>
                 </div>
+
+                {/* Status Timeline */}
+                {renderTimeline(r.status)}
+
+                {/* OTP Code Display for Handover */}
+                {r.status === 'picked_up' && r.deliveryOTP && (
+                  <div className="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm text-blue-800 font-bold">📦 Delivery Handover OTP</p>
+                      <p className="text-xs text-blue-600">Provide this 6-digit code to the carrier once they deliver your package physically.</p>
+                    </div>
+                    <div className="bg-white border-2 border-blue-400 px-5 py-2 rounded-lg font-mono font-bold text-2xl text-blue-700 tracking-wider shadow-sm">
+                      {r.deliveryOTP}
+                    </div>
+                  </div>
+                )}
+
+                {/* Review Carrier Action */}
+                {r.status === 'delivered' && !r.isReviewed && reviewingRequestId !== r._id && (
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      onClick={() => {
+                        setReviewingRequestId(r._id);
+                        setRating(5);
+                        setComment("");
+                      }}
+                      className="px-4 py-2 bg-gradient-to-r from-blue-600 to-emerald-600 text-white font-medium rounded-lg hover:from-blue-700 hover:to-emerald-700 transition duration-200 text-sm shadow-sm"
+                    >
+                      ⭐ Rate Carrier
+                    </button>
+                  </div>
+                )}
+
+                {/* Reviewed Badge */}
+                {r.status === 'delivered' && r.isReviewed && (
+                  <div className="mt-4 flex justify-end text-emerald-600 text-sm font-semibold items-center gap-1">
+                    <span>✓</span> Rated & Reviewed
+                  </div>
+                )}
+
+                {/* Review Form */}
+                {reviewingRequestId === r._id && (
+                  <form onSubmit={(e) => handleReviewSubmit(e, r)} className="mt-6 border-t border-gray-100 pt-4 space-y-4">
+                    <h4 className="font-bold text-gray-800 text-sm">Review Carrier</h4>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1 font-medium">Rating (1 to 5 Stars)</label>
+                      <div className="flex gap-2">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() => setRating(star)}
+                            className="text-2xl transition duration-150 cursor-pointer"
+                          >
+                            {star <= rating ? "★" : "☆"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1 font-medium">Your Review</label>
+                      <textarea
+                        required
+                        rows="2"
+                        placeholder="Write a brief comment about the carrier's service..."
+                        value={comment}
+                        onChange={(e) => setComment(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setReviewingRequestId(null)}
+                        className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={reviewSubmitting}
+                        className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {reviewSubmitting ? "Submitting..." : "Submit Review"}
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
             ))}
           </div>

@@ -7,17 +7,23 @@ const connectDB = require("./src/config/db");
 const authRoutes = require("./src/routes/auth.routes");
 const tripRoutes = require("./src/routes/trip.routes");
 const requestRoutes = require("./src/routes/request.routes");
+const reviewRoutes = require("./src/routes/review.routes");
 dotenv.config();
 
 const app = express();
 
 // Middleware
 
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://have-it-sooty.vercel.app"
+];
+if (process.env.FRONTEND_URL) {
+  allowedOrigins.push(process.env.FRONTEND_URL);
+}
+
 app.use(cors({
-  origin: [
-    "http://localhost:5173",
-    "https://have-it-sooty.vercel.app"
-  ],
+  origin: allowedOrigins,
   credentials: true
 }));
 
@@ -34,6 +40,7 @@ connectDB();
 app.use("/api/auth", authRoutes);
 app.use("/api/trips", tripRoutes);
 app.use("/api/requests", requestRoutes);
+app.use("/api/reviews", reviewRoutes);
 
 // Test
 // app.get("/", (req, res) => {

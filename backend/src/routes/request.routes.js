@@ -7,7 +7,8 @@ const {
   getAllCarrierRequests,
   getRequestById,
   getMyRequests,
-  getAcceptedRequests
+  getAcceptedRequests,
+  verifyDeliveryOTP
 } = require("../controllers/request.controller");
 const authMiddleware = require("../middlewares/auth.middleware");
 
@@ -21,6 +22,7 @@ router.get('/accepted', authMiddleware, getAcceptedRequests);
 router.get("/check/:tripId", authMiddleware, checkRequest);
 router.get("/trip/:tripId", authMiddleware, getTripRequests);
 router.put("/:requestId/status", authMiddleware, updateRequestStatus);
+router.post("/:requestId/verify-otp", authMiddleware, verifyDeliveryOTP);
 
 router.get("/:requestId", authMiddleware, getRequestById);
 

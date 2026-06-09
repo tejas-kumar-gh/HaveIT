@@ -19,6 +19,10 @@ const TripCarrier = () => {
   const [acceptedRequests, setAcceptedRequests] = useState([]);
   const [acceptedLoading, setAcceptedLoading] = useState(false);
   const [acceptedError, setAcceptedError] = useState('');
+  
+  // States for OTP delivery verification
+  const [otpInputs, setOtpInputs] = useState({});
+  const [verifyingMap, setVerifyingMap] = useState({});
 
   // 🔹 Existing function to fetch My Trips
   const fetchMyTrips = async (pageNumber = 1) => {
@@ -46,23 +50,97 @@ const TripCarrier = () => {
     if (!showMyTrips) fetchMyTrips(1);
   };
 
-  // 🔹 Existing Accept/Reject request function
+  // 🔹 Updated Accept/Reject/Pickup request function
   const handleRequestAction = async (requestId, action) => {
-  try {
-    await axios.put(
-      `${API_URL}/requests/${requestId}/status`,
-      { status: action === "accept" ? "accepted" : "rejected" },
-      { headers: { Authorization: `Bearer ${token}` } }
+    try {
+      let statusValue = action;
+      if (action === "accept") statusValue = "accepted";
+      if (action === "reject") statusValue = "rejected";
+
+      await axios.put(
+        `${API_URL}/requests/${requestId}/status`,
+        { status: statusValue },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      alert(`Request status updated to '${statusValue}' successfully`);
+      fetchMyTrips(page);
+    } catch (err) {
+      console.error(`Failed to update request`, err);
+      alert(err.response?.data?.message || `Failed to update request`);
+    }
+  };
+
+  // 🔹 Verify Delivery OTP code
+  const handleVerifyOTP = async (requestId) => {
+    const otp = otpInputs[requestId];
+    if (!otp || otp.trim().length !== 6) {
+      alert("Please enter a valid 6-digit OTP code");
+      return;
+    }
+    setVerifyingMap(prev => ({ ...prev, [requestId]: true }));
+    try {
+      await axios.post(
+        `${API_URL}/requests/${requestId}/verify-otp`,
+        { otp: otp.trim() },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      alert("Delivery verified and completed successfully!");
+      setOtpInputs(prev => ({ ...prev, [requestId]: "" }));
+      fetchMyTrips(page);
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.message || "Verification failed");
+    } finally {
+      setVerifyingMap(prev => ({ ...prev, [requestId]: false }));
+    }
+  };
+
+  const renderTimeline = (status) => {
+    if (status === 'rejected') {
+      return (
+        <div className="flex items-center text-red-600 font-semibold gap-2 mt-4 bg-red-50 p-3 rounded-lg border border-red-200 text-sm">
+          <span>🚫</span> Request Rejected
+        </div>
+      );
+    }
+    const steps = [
+      { label: 'Pending', key: 'pending' },
+      { label: 'Accepted', key: 'accepted' },
+      { label: 'Picked Up', key: 'picked_up' },
+      { label: 'Delivered', key: 'delivered' }
+    ];
+    const currentIndex = steps.findIndex(s => s.key === status);
+    return (
+      <div className="w-full mt-6 px-2">
+        <div className="flex items-center justify-between relative">
+          <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 bg-gray-200 z-0"></div>
+          <div 
+            className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-blue-500 transition-all duration-500 z-0" 
+            style={{ width: `${(currentIndex / (steps.length - 1)) * 100}%` }}
+          ></div>
+          {steps.map((step, idx) => {
+            const isCompleted = idx <= currentIndex;
+            const isActive = idx === currentIndex;
+            return (
+              <div key={step.key} className="flex flex-col items-center z-10 relative">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-300 ${
+                  isActive ? 'bg-blue-600 text-white ring-4 ring-blue-100' :
+                  isCompleted ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-500'
+                }`}>
+                  {isCompleted && !isActive ? '✓' : idx + 1}
+                </div>
+                <span className={`text-xs mt-2 font-medium ${
+                  isActive ? 'text-blue-600 font-bold' :
+                  isCompleted ? 'text-emerald-600' : 'text-gray-400'
+                }`}>{step.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     );
-
-    alert(`Request ${action}ed successfully`);
-    fetchMyTrips(page);
-
-  } catch (err) {
-    console.error(`Failed to ${action} request`, err);
-    alert(`Failed to ${action} request`);
-  }
-};
+  };
 
 
   // 🔹 NEW: Fetch Accepted Requests
@@ -190,24 +268,23 @@ const TripCarrier = () => {
                     {trip.requests?.map((req) => (
                       <div
                         key={req._id}
-                        className={`border rounded-xl p-4 ${
-                          req.status === 'accepted' ? 'border-green-200 bg-green-50' : 
-                          req.status === 'rejected' ? 'border-red-200 bg-red-50' : 
-                          'border-yellow-200 bg-yellow-50'
+                        className={`border rounded-xl p-5 mb-4 ${
+                          req.status === 'delivered' ? 'border-emerald-200 bg-emerald-50/20' : 
+                          req.status === 'picked_up' ? 'border-blue-200 bg-blue-50/20' : 
+                          req.status === 'accepted' ? 'border-green-200 bg-green-50/20' : 
+                          req.status === 'rejected' ? 'border-red-200 bg-red-50/20' : 
+                          'border-yellow-200 bg-yellow-50/20'
                         }`}
                       >
                         <div className="flex flex-col md:flex-row md:items-center justify-between">
                           <div className="mb-4 md:mb-0">
                             <div className="flex items-center gap-3 mb-2">
-                              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                                req.status === 'accepted' ? 'bg-green-100' : 
-                                req.status === 'rejected' ? 'bg-red-100' : 'bg-yellow-100'
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                                req.status === 'delivered' || req.status === 'picked_up' || req.status === 'accepted' ? 'bg-green-100 text-green-600' : 
+                                req.status === 'rejected' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-600'
                               }`}>
-                                <span className={
-                                  req.status === 'accepted' ? 'text-green-600' : 
-                                  req.status === 'rejected' ? 'text-red-600' : 'text-yellow-600'
-                                }>
-                                  {req.status === 'accepted' ? '✓' : req.status === 'rejected' ? '✗' : '⏳'}
+                                <span className="text-lg">
+                                  {req.status === 'delivered' ? '✓' : req.status === 'rejected' ? '✗' : '⏳'}
                                 </span>
                               </div>
                               <div>
@@ -219,24 +296,71 @@ const TripCarrier = () => {
                             </div>
                           </div>
 
-                          {req.status === 'pending' && (
-                            <div className="flex gap-3">
-                              <button
-                                onClick={() => handleRequestAction(req._id, 'accept')}
-                                className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-medium rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all duration-300"
-                              >
-                                Accept
-                              </button>
+                          <div className="flex flex-wrap gap-2">
+                            {req.status === 'pending' && (
+                              <>
+                                <button
+                                  onClick={() => handleRequestAction(req._id, 'accept')}
+                                  className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-medium rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all duration-300 text-sm shadow-sm cursor-pointer"
+                                >
+                                  Accept
+                                </button>
 
+                                <button
+                                  onClick={() => handleRequestAction(req._id, 'reject')}
+                                  className="px-4 py-2 bg-gradient-to-r from-red-600 to-pink-600 text-white font-medium rounded-lg hover:from-red-700 hover:to-pink-700 transition-all duration-300 text-sm shadow-sm cursor-pointer"
+                                >
+                                  Reject
+                                </button>
+                              </>
+                            )}
+
+                            {req.status === 'accepted' && (
                               <button
-                                onClick={() => handleRequestAction(req._id, 'reject')}
-                                className="px-4 py-2 bg-gradient-to-r from-red-600 to-pink-600 text-white font-medium rounded-lg hover:from-red-700 hover:to-pink-700 transition-all duration-300"
+                                onClick={() => handleRequestAction(req._id, 'picked_up')}
+                                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-medium rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-300 text-sm shadow-sm cursor-pointer"
                               >
-                                Reject
+                                Mark as Picked Up
+                              </button>
+                            )}
+
+                            {req.status === 'delivered' && (
+                              <div className="flex items-center text-emerald-600 font-bold text-sm bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100">
+                                ✓ Delivery Completed
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Render progress timeline */}
+                        {renderTimeline(req.status)}
+
+                        {/* Verification form if picked up */}
+                        {req.status === 'picked_up' && (
+                          <div className="mt-6 border-t border-gray-100 pt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                            <div>
+                              <p className="text-sm font-bold text-gray-700">🔐 Delivery Handover Verification</p>
+                              <p className="text-xs text-gray-500">Ask the demander for the 6-digit OTP code to confirm receipt.</p>
+                            </div>
+                            <div className="flex gap-2 w-full sm:w-auto items-center">
+                              <input
+                                type="text"
+                                maxLength="6"
+                                placeholder="6-digit OTP"
+                                value={otpInputs[req._id] || ""}
+                                onChange={(e) => setOtpInputs(prev => ({ ...prev, [req._id]: e.target.value }))}
+                                className="w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm tracking-widest font-mono font-bold text-center focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                              />
+                              <button
+                                onClick={() => handleVerifyOTP(req._id)}
+                                disabled={verifyingMap[req._id]}
+                                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-emerald-600 text-white font-medium rounded-lg hover:from-blue-700 hover:to-emerald-700 text-sm shadow-sm disabled:opacity-50 cursor-pointer"
+                              >
+                                {verifyingMap[req._id] ? "Verifying..." : "Verify OTP"}
                               </button>
                             </div>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

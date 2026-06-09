@@ -31,9 +31,6 @@ function App() {
           <Route path='/item-demander' element={<ItemDemander />} ></Route>
  <Route path='/request/:tripId' element={<RequestForm />} ></Route>
         <Route path="/carrier/requests" element={<CarrierRequests />} />
-
-    
-    carrier/requests
       </Routes>
         
     

@@ -1,5 +1,6 @@
 const Request = require("../models/Request");
 const Trip = require("../models/Trip");
+const User = require("../models/User");
 
 // Create delivery request
 exports.createRequest = async (req, res) => {
@@ -96,13 +97,13 @@ exports.getTripRequests = async (req, res) => {
   }
 };
 
-// Update request status (accept/reject)
+// Update request status (accept/reject/pickup)
 exports.updateRequestStatus = async (req, res) => {
   try {
     const { requestId } = req.params;
     const { status } = req.body;
     
-    if (!['accepted', 'rejected'].includes(status)) {
+    if (!['accepted', 'rejected', 'picked_up'].includes(status)) {
       return res.status(400).json({ message: "Invalid status" });
     }
     
@@ -122,6 +123,11 @@ exports.updateRequestStatus = async (req, res) => {
     if (status === 'accepted') {
       request.carrierId = req.user.id;
     }
+    if (status === 'picked_up') {
+      // Generate random 6-digit OTP
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      request.deliveryOTP = otp;
+    }
     await request.save();
     
     // If accepted, update trip capacity
@@ -130,9 +136,57 @@ exports.updateRequestStatus = async (req, res) => {
       await trip.save();
     }
     
-    res.json({ message: `Request ${status} successfully`, request });
+    res.json({ message: `Request status updated to ${status} successfully`, request });
   } catch (err) {
     console.error('Error updating request:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// Verify Delivery OTP (for carrier to finalize delivery)
+exports.verifyDeliveryOTP = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { otp } = req.body;
+
+    if (!otp) {
+      return res.status(400).json({ message: "OTP is required" });
+    }
+
+    const request = await Request.findById(requestId);
+    if (!request) {
+      return res.status(404).json({ message: "Request not found" });
+    }
+
+    // Check if user is the carrier of the trip
+    const trip = await Trip.findById(request.tripId);
+    if (!trip || trip.carrierId.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+
+    if (request.status !== 'picked_up') {
+      return res.status(400).json({ message: "Item must be in 'picked_up' status to verify delivery" });
+    }
+
+    if (request.deliveryOTP !== otp.trim()) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    // Update status to delivered and clean up OTP
+    request.status = 'delivered';
+    request.deliveryOTP = undefined;
+    await request.save();
+
+    // Increment carrier's totalDeliveries
+    const carrier = await User.findById(req.user.id);
+    if (carrier) {
+      carrier.totalDeliveries = (carrier.totalDeliveries || 0) + 1;
+      await carrier.save();
+    }
+
+    res.json({ message: "Delivery verified and completed successfully!", request });
+  } catch (err) {
+    console.error("Error verifying OTP:", err);
     res.status(500).json({ message: err.message });
   }
 };
